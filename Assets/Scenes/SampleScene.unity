@@ -310,6 +310,34 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 60297007664329616, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: requiredDistance
+      value: 12
+      objectReference: {fileID: 0}
+    - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Size.x
+      value: 5.019845
+      objectReference: {fileID: 0}
+    - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Size.y
+      value: 7.2570467
+      objectReference: {fileID: 0}
+    - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Offset.x
+      value: 0.37286532
+      objectReference: {fileID: 0}
+    - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Offset.y
+      value: -0.000006198883
+      objectReference: {fileID: 0}
+    - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_IsTrigger
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 864610988170915767, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_TagString
+      value: Airplane
+      objectReference: {fileID: 0}
     - target: {fileID: 1631144364794742092, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_LocalPosition.x
       value: -127.11827
@@ -350,6 +378,26 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Size.x
+      value: 7.2202444
+      objectReference: {fileID: 0}
+    - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Size.y
+      value: 6.958404
+      objectReference: {fileID: 0}
+    - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Offset.x
+      value: 0.0000014305115
+      objectReference: {fileID: 0}
+    - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_Offset.y
+      value: 0.48526645
+      objectReference: {fileID: 0}
+    - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_IsTrigger
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3921730617855909319, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_Name
       value: Level2_last
@@ -357,6 +405,30 @@ PrefabInstance:
     - target: {fileID: 3921730617855909319, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_IsActive
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4539576256015562864, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_TagString
+      value: Airplane
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: moveSpeed
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: moveDirection.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: moveDirection.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: moveDirection.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: requiredDistance
+      value: 8
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

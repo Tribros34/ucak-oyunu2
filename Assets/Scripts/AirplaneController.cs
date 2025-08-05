@@ -6,7 +6,6 @@ public class AirplaneController : MonoBehaviour
 {
     private AirplaneData data;
     private SpriteRenderer spriteRenderer;
-    private Vector3 originalScale;
     private Color originalColor;
 
     private float movedDistance = 0f;
@@ -16,11 +15,10 @@ public class AirplaneController : MonoBehaviour
     {
         data = GetComponent<AirplaneData>();
         spriteRenderer = GetComponent<SpriteRenderer>();
-        originalScale = transform.localScale;
         originalColor = spriteRenderer.color;
     }
 
-    public void StartRolling() // bu fonksiyon dışarıdan tetiklenir
+    public void StartRolling()
     {
         Debug.Log($"{gameObject.name} StartRolling çağrıldı");
 
@@ -53,26 +51,32 @@ public class AirplaneController : MonoBehaviour
         float duration = 1.5f;
         float elapsed = 0f;
 
+        float rotationAmount = 10f; // sağa sola eğilme açısı (derece)
+
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = elapsed / duration;
 
-            transform.localScale = Vector3.Lerp(originalScale, originalScale * 0.2f, t);
+            // Hafif sağa-sola döndürme efekti (zigzag gibi)
+            float angle = Mathf.Sin(t * Mathf.PI * 2f) * rotationAmount;
+            transform.rotation = Quaternion.Euler(0f, 0f, angle);
+
+            // Saydamlaşarak yok olma
             spriteRenderer.color = new Color(originalColor.r, originalColor.g, originalColor.b, 1f - t);
 
             yield return null;
         }
     }
+
     private void OnTriggerEnter2D(Collider2D other)
-{
-    if (other.CompareTag("Airplane") && other.gameObject != this.gameObject)
     {
-        Debug.Log($"{gameObject.name} çarpıştı → {other.gameObject.name}");
+        if (other.CompareTag("Airplane") && other.gameObject != this.gameObject)
+        {
+            Debug.Log($"{gameObject.name} çarpıştı → {other.gameObject.name}");
 
-        Destroy(other.gameObject); // diğer uçağı sil
-        Destroy(this.gameObject);  // kendini sil
+            Destroy(other.gameObject); // diğer uçağı sil
+            Destroy(this.gameObject);  // kendini sil
+        }
     }
-}
-
 }

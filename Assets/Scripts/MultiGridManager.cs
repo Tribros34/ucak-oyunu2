@@ -50,6 +50,25 @@ public class MultiGridManager : MonoBehaviour
     /// <summary>
     /// Obstacle tagli objeleri grid'e bloklar
     /// </summary>
+    /// 
+    ///   
+public bool IsValidPlacement(Vector3 position, float width)
+{
+    // Uçağın kapladığı alanın uygunluğunu kontrol et
+    bool isBlocked = Physics2D.OverlapBox(
+        position + new Vector3(width * 0.5f, 0, 0),
+        new Vector2(width, 1f),
+        0f,
+        LayerMask.GetMask("Obstacle")
+    );
+
+    return !isBlocked;
+}
+
+
+
+
+
     private void MarkObstacles()
     {
         Collider2D[] obstacles = Physics2D.OverlapBoxAll(
