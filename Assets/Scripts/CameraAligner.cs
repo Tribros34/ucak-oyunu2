@@ -4,9 +4,28 @@ public class CameraAligner : MonoBehaviour
 {
     public Transform airportObject;
     public Camera targetCamera;
-    public float extraZoomOutFactor = 0.01f; // %1 boşluk payı (isteğe bağlı)
+
+    [Header("Zoom Ayarları")]
+    [Range(-1f, 1f)]
+    public float zoomOffset = 0f; // Pozitif → uzaklaş, Negatif → yaklaş
+
+    public float extraZoomOutFactor = 0.01f; // % boşluk payı (isteğe bağlı)
 
     void Start()
+    {
+        AlignCamera();
+    }
+
+#if UNITY_EDITOR
+    // Oyun çalışırken ayar değişince anında gör
+    void OnValidate()
+    {
+        if (airportObject != null && targetCamera != null)
+            AlignCamera();
+    }
+#endif
+
+    void AlignCamera()
     {
         if (airportObject == null || targetCamera == null)
         {
@@ -30,17 +49,22 @@ public class CameraAligner : MonoBehaviour
         // Kamera zoom: tam oturt
         float screenAspect = (float)Screen.width / Screen.height;
         float targetAspect = bounds.size.x / bounds.size.y;
+        float size;
 
         if (screenAspect >= targetAspect)
         {
             // Ekran daha geniş, yüksekliğe göre zoom
-            targetCamera.orthographicSize = bounds.size.y / 2f * (1f + extraZoomOutFactor);
+            size = bounds.size.y / 2f;
         }
         else
         {
             // Ekran daha dar, genişliğe göre zoom
-            float camSize = (bounds.size.x / screenAspect) / 2f;
-            targetCamera.orthographicSize = camSize * (1f + extraZoomOutFactor);
+            size = (bounds.size.x / screenAspect) / 2f;
         }
+
+        // Ekstra boşluk + zoomOffset uygula
+        size *= (1f + extraZoomOutFactor + zoomOffset);
+
+        targetCamera.orthographicSize = size;
     }
 }

@@ -17,21 +17,24 @@ public class MultiGridManager : MonoBehaviour
     private int width;
     private int height;
 
-    // Hangi hücre dolu veya engelli tutulur
+    // Engeller (hücre işaretleme)
     private bool[,] blockedCells;
+
+    // Uçak işgali
+    private bool[,] occupiedCells;
+    private readonly Dictionary<AirplaneData, List<Vector2Int>> planeCells = new();
 
     private void Awake()
     {
         Instance = this;
 
-        if (gridAreaTransform == null)
+        if (!gridAreaTransform)
         {
             Debug.LogError("GridAreaTransform atanmamış!");
             return;
         }
 
         var bounds = gridAreaTransform.GetComponent<Renderer>()?.bounds;
-
         if (bounds == null)
         {
             Debug.LogError("GridAreaTransform'da Renderer yok!");
@@ -43,62 +46,38 @@ public class MultiGridManager : MonoBehaviour
         height = Mathf.FloorToInt(bounds.Value.size.y / cellSize);
 
         blockedCells = new bool[width, height];
+        occupiedCells = new bool[width, height];
 
         MarkObstacles();
     }
 
-    /// <summary>
-    /// Obstacle tagli objeleri grid'e bloklar
-    /// </summary>
-    /// 
-    ///   
-public bool IsValidPlacement(Vector3 position, float width)
-{
-    // Uçağın kapladığı alanın uygunluğunu kontrol et
-    bool isBlocked = Physics2D.OverlapBox(
-        position + new Vector3(width * 0.5f, 0, 0),
-        new Vector2(width, 1f),
-        0f,
-        LayerMask.GetMask("Obstacle")
-    );
-
-    return !isBlocked;
-}
-
-
-
-
-
     private void MarkObstacles()
     {
+        // Basit: obstacle pivotunun geldiği hücreyi işaretler (geniş alanlar için
+        // asıl kontrolü OverlapBox ile yapıyoruz)
         Collider2D[] obstacles = Physics2D.OverlapBoxAll(
             origin + new Vector3(width * cellSize / 2f, height * cellSize / 2f),
             new Vector2(width * cellSize, height * cellSize),
             0f,
-            LayerMask.GetMask("Obstacle")  // Layer'ı kontrol et!
+            LayerMask.GetMask("Obstacle")
         );
 
         foreach (var col in obstacles)
         {
             Vector2Int cell = GetGridPosition(col.transform.position);
-
             if (IsWithinBounds(cell))
                 blockedCells[cell.x, cell.y] = true;
         }
     }
 
     public void StartAllAirplanes()
-
     {
-    Debug.Log("✅ StartAllAirplanes() ÇAĞRILDI!");
-
         foreach (var plane in allAirplanes)
-        {
             if (plane != null)
                 plane.StartRolling();
-        }
     }
 
+    // ----- Grid yardımcıları -----
     public Vector2Int GetGridPosition(Vector3 worldPos)
     {
         int x = Mathf.FloorToInt((worldPos - origin).x / cellSize);
@@ -122,10 +101,88 @@ public bool IsValidPlacement(Vector3 position, float width)
         return blockedCells[cell.x, cell.y];
     }
 
+    public bool IsCellOccupied(Vector2Int cell)
+    {
+        if (!IsWithinBounds(cell)) return true;
+        return occupiedCells[cell.x, cell.y];
+    }
+
+    // ----- Yerleştirme / Döndürme API'ları -----
+
+    // Fiziksel engel kesişimi (Obstacle layer) — footprint kutusuyla
+    public bool OverlapsObstacle(AirplaneData data, Vector2Int gridPos, int rotation)
+    {
+        GetFootprintBox(data.gridSize, gridPos, rotation, out Vector3 center, out Vector2 size);
+        return Physics2D.OverlapBox(center, size, 0f, LayerMask.GetMask("Obstacle"));
+    }
+
+    // Konulabilir mi? (sınır + işgal + fiziksel engel)
+    public bool CanPlace(AirplaneData data, Vector2Int gridPos, int rotation)
+    {
+        foreach (var c in GetFootprintCells(data.gridSize, gridPos, rotation))
+        {
+            if (!IsWithinBounds(c)) return false;
+            if (IsCellOccupied(c)) return false;   // diğer uçaklarla çakışma
+        }
+        // Engelleri fizik üzerinden geniş alan olarak test et
+        if (OverlapsObstacle(data, gridPos, rotation)) return false;
+
+        return true;
+    }
+
+    public bool OccupyIfAvailable(AirplaneData data, Vector2Int gridPos, int rotation)
+    {
+        if (!CanPlace(data, gridPos, rotation)) return false;
+        Occupy(data, gridPos, rotation);
+        return true;
+    }
+
+    public void Occupy(AirplaneData data, Vector2Int gridPos, int rotation)
+    {
+        Release(data); // eski işgali temizle
+
+        var list = new List<Vector2Int>();
+        foreach (var c in GetFootprintCells(data.gridSize, gridPos, rotation))
+        {
+            occupiedCells[c.x, c.y] = true;
+            list.Add(c);
+        }
+        planeCells[data] = list;
+    }
+
+    public void Release(AirplaneData data)
+    {
+        if (!planeCells.TryGetValue(data, out var list)) return;
+        foreach (var c in list)
+            if (IsWithinBounds(c)) occupiedCells[c.x, c.y] = false;
+        planeCells.Remove(data);
+    }
+
+    // ----- Footprint yardımcıları -----
+    private IEnumerable<Vector2Int> GetFootprintCells(Vector2Int size, Vector2Int originCell, int rotation)
+    {
+        int w = size.x, h = size.y;
+        if ((rotation % 180) != 0) { int t = w; w = h; h = t; }
+
+        for (int dx = 0; dx < w; dx++)
+            for (int dy = 0; dy < h; dy++)
+                yield return new Vector2Int(originCell.x + dx, originCell.y + dy);
+    }
+
+    // OverlapBox için merkez ve boyutu hesapla
+    public void GetFootprintBox(Vector2Int size, Vector2Int originCell, int rotation, out Vector3 center, out Vector2 worldSize)
+    {
+        int w = size.x, h = size.y;
+        if ((rotation % 180) != 0) { int t = w; w = h; h = t; }
+
+        Vector3 worldOrigin = GetWorldPosition(originCell.x, originCell.y);
+        worldSize = new Vector2(w * cellSize, h * cellSize);
+        center = worldOrigin + new Vector3(worldSize.x * 0.5f, worldSize.y * 0.5f, 0f);
+    }
+
     private void OnDrawGizmos()
     {
-        if (gridAreaTransform == null) return;
-
+        if (!gridAreaTransform) return;
         var bounds = gridAreaTransform.GetComponent<Renderer>()?.bounds;
         if (bounds == null) return;
 
@@ -133,15 +190,16 @@ public bool IsValidPlacement(Vector3 position, float width)
         width = Mathf.FloorToInt(bounds.Value.size.x / cellSize);
         height = Mathf.FloorToInt(bounds.Value.size.y / cellSize);
 
-        Gizmos.color = gizmoColor;
-
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
                 Vector3 center = GetWorldPosition(x, y) + Vector3.one * cellSize * 0.5f;
+                Color c = gizmoColor;
+                if (blockedCells != null && blockedCells[x, y]) c = Color.red;
+                else if (occupiedCells != null && occupiedCells[x, y]) c = Color.yellow;
 
-                Gizmos.color = blockedCells != null && blockedCells[x, y] ? Color.red : gizmoColor;
+                Gizmos.color = c;
                 Gizmos.DrawWireCube(center, Vector3.one * cellSize);
             }
         }

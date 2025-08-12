@@ -138,7 +138,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   airportObject: {fileID: 1720999078}
   targetCamera: {fileID: 1305641858}
-  extraZoomOutFactor: 0.01
+  zoomOffset: -0.125
+  extraZoomOutFactor: -0.01
 --- !u!1 &599724048
 GameObject:
   m_ObjectHideFlags: 0
@@ -311,8 +312,16 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 60297007664329616, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: rotation
+      value: 89
+      objectReference: {fileID: 0}
+    - target: {fileID: 60297007664329616, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: requiredDistance
       value: 12
+      objectReference: {fileID: 0}
+    - target: {fileID: 526893472018820243, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: forwardAxis
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 571048931024966545, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_Size.x
@@ -337,6 +346,10 @@ PrefabInstance:
     - target: {fileID: 864610988170915767, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_TagString
       value: Airplane
+      objectReference: {fileID: 0}
+    - target: {fileID: 1027807552216966850, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: doubleTapMaxDelay
+      value: 0.2
       objectReference: {fileID: 0}
     - target: {fileID: 1631144364794742092, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_LocalPosition.x
@@ -378,6 +391,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2125418082135585972, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -0.2199707
+      objectReference: {fileID: 0}
     - target: {fileID: 3707750973447808753, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_Size.x
       value: 7.2202444
@@ -406,9 +423,17 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 4246965350973091470, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: forwardAxis
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4539576256015562864, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: m_TagString
       value: Airplane
+      objectReference: {fileID: 0}
+    - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
+      propertyPath: rotation
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 6134555767010677806, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
       propertyPath: moveSpeed
@@ -450,6 +475,7 @@ GameObject:
   - component: {fileID: 1305641858}
   - component: {fileID: 1305641857}
   - component: {fileID: 1305641856}
+  - component: {fileID: 1305641860}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -518,8 +544,8 @@ Camera:
   m_GameObject: {fileID: 1305641855}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 4
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0.37971246, g: 0.4745098, b: 0.19215688, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -544,7 +570,7 @@ Camera:
   far clip plane: 1003.09
   field of view: 34
   orthographic: 1
-  orthographic size: 24.5
+  orthographic size: 21.296328
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -569,12 +595,28 @@ Transform:
   m_GameObject: {fileID: 1305641855}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: 0.000000014901161, w: 1}
-  m_LocalPosition: {x: -43.36, y: -52, z: -10}
+  m_LocalPosition: {x: -112.86247, y: -50.82132, z: -10}
   m_LocalScale: {x: 1, y: 9, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1305641860
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1305641855}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff05b1ecda4fade41b61d1d06c9b5fdd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  airportObject: {fileID: 0}
+  targetCamera: {fileID: 0}
+  zoomOffset: 0
+  extraZoomOutFactor: 0.01
 --- !u!4 &1720999078 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8024562079238374131, guid: b373e01f20d8e164b849b45bf87b1bfb, type: 3}
