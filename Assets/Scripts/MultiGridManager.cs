@@ -5,17 +5,35 @@ public class MultiGridManager : MonoBehaviour
 {
     public static MultiGridManager Instance;
 
+    public enum FitMode { UseRowsCols, UseCellSize }
+
     [Header("Grid Ayarları")]
     public Transform gridAreaTransform;
+
+    [Tooltip("Hücre kare boyu (UseCellSize modunda aktif)")]
     public float cellSize = 1f;
+
+    [Tooltip("Izgarayı alana tam oturtmak için mod")]
+    public FitMode fitMode = FitMode.UseRowsCols;
+
+    [Tooltip("UseRowsCols modunda hedef sütun/satır sayısı")]
+    public int columns = 8, rows = 12;
+
     public Color gizmoColor = Color.gray;
+
+    [Header("Konum (Inspector'dan ayarlanabilir)")]
+    [Tooltip("World-space kaydırma (birim cinsinden)")]
+    public Vector2 gridOffset = Vector2.zero;
+
+    [Tooltip("Hücre cinsinden kaydırma (tam hücre kaydırır)")]
+    public Vector2Int cellOffset = Vector2Int.zero;
 
     [Header("Uçaklar")]
     public List<AirplaneController> allAirplanes = new List<AirplaneController>();
 
-    private Vector3 origin;
-    private int width;
-    private int height;
+    private Vector3 origin; // gridin sol-alt köşe dünya koordinatı (padding + offset sonrası)
+    private int width;      // hücre cinsinden genişlik
+    private int height;     // hücre cinsinden yükseklik
 
     // Engeller (hücre işaretleme)
     private bool[,] blockedCells;
@@ -24,7 +42,7 @@ public class MultiGridManager : MonoBehaviour
     private bool[,] occupiedCells;
     private readonly Dictionary<AirplaneData, List<Vector2Int>> planeCells = new();
 
-    private void Awake()
+    void Awake()
     {
         Instance = this;
 
@@ -41,20 +59,56 @@ public class MultiGridManager : MonoBehaviour
             return;
         }
 
-        origin = bounds.Value.min;
-        width = Mathf.FloorToInt(bounds.Value.size.x / cellSize);
-        height = Mathf.FloorToInt(bounds.Value.size.y / cellSize);
+        RecalculateGrid(bounds.Value);   // <<< ortak hesap
 
-        blockedCells = new bool[width, height];
+        blockedCells  = new bool[width, height];
         occupiedCells = new bool[width, height];
 
         MarkObstacles();
     }
 
+    // --- Beyaz alana göre origin / cellSize / width / height hesabı + offsetler ---
+    private void RecalculateGrid(Bounds b)
+    {
+        Vector3 baseOrigin;
+
+        if (fitMode == FitMode.UseRowsCols)
+        {
+            // Hücre kare kalmalı → X ve Y’den çıkan iki olası boydan küçük olanı al
+            float csX = b.size.x / Mathf.Max(1, columns);
+            float csY = b.size.y / Mathf.Max(1, rows);
+            cellSize  = Mathf.Min(csX, csY);
+
+            width  = columns;
+            height = rows;
+
+            // Kenar boşluklarını eşitle ve grid’i içte merkezle
+            float padX = (b.size.x - width * cellSize)  * 0.5f;
+            float padY = (b.size.y - height * cellSize) * 0.5f;
+            baseOrigin = b.min + new Vector3(padX, padY, 0f);
+        }
+        else // FitMode.UseCellSize
+        {
+            width  = Mathf.FloorToInt(b.size.x / Mathf.Max(0.0001f, cellSize));
+            height = Mathf.FloorToInt(b.size.y / Mathf.Max(0.0001f, cellSize));
+
+            // Sığmayan kısım iki tarafa eşit dağıtılır → çizgiler kenara paralel olur
+            float padX = (b.size.x - width * cellSize)  * 0.5f;
+            float padY = (b.size.y - height * cellSize) * 0.5f;
+            baseOrigin = b.min + new Vector3(padX, padY, 0f);
+        }
+
+        // --- Inspector offsetleri ---
+        // 1) world-space offset
+        baseOrigin += new Vector3(gridOffset.x, gridOffset.y, 0f);
+        // 2) hücre cinsinden offset
+        baseOrigin += new Vector3(cellOffset.x * cellSize, cellOffset.y * cellSize, 0f);
+
+        origin = baseOrigin;
+    }
+
     private void MarkObstacles()
     {
-        // Basit: obstacle pivotunun geldiği hücreyi işaretler (geniş alanlar için
-        // asıl kontrolü OverlapBox ile yapıyoruz)
         Collider2D[] obstacles = Physics2D.OverlapBoxAll(
             origin + new Vector3(width * cellSize / 2f, height * cellSize / 2f),
             new Vector2(width * cellSize, height * cellSize),
@@ -108,25 +162,20 @@ public class MultiGridManager : MonoBehaviour
     }
 
     // ----- Yerleştirme / Döndürme API'ları -----
-
-    // Fiziksel engel kesişimi (Obstacle layer) — footprint kutusuyla
     public bool OverlapsObstacle(AirplaneData data, Vector2Int gridPos, int rotation)
     {
         GetFootprintBox(data.gridSize, gridPos, rotation, out Vector3 center, out Vector2 size);
         return Physics2D.OverlapBox(center, size, 0f, LayerMask.GetMask("Obstacle"));
     }
 
-    // Konulabilir mi? (sınır + işgal + fiziksel engel)
     public bool CanPlace(AirplaneData data, Vector2Int gridPos, int rotation)
     {
         foreach (var c in GetFootprintCells(data.gridSize, gridPos, rotation))
         {
             if (!IsWithinBounds(c)) return false;
-            if (IsCellOccupied(c)) return false;   // diğer uçaklarla çakışma
+            if (IsCellOccupied(c)) return false;
         }
-        // Engelleri fizik üzerinden geniş alan olarak test et
         if (OverlapsObstacle(data, gridPos, rotation)) return false;
-
         return true;
     }
 
@@ -139,7 +188,7 @@ public class MultiGridManager : MonoBehaviour
 
     public void Occupy(AirplaneData data, Vector2Int gridPos, int rotation)
     {
-        Release(data); // eski işgali temizle
+        Release(data);
 
         var list = new List<Vector2Int>();
         foreach (var c in GetFootprintCells(data.gridSize, gridPos, rotation))
@@ -158,7 +207,6 @@ public class MultiGridManager : MonoBehaviour
         planeCells.Remove(data);
     }
 
-    // ----- Footprint yardımcıları -----
     private IEnumerable<Vector2Int> GetFootprintCells(Vector2Int size, Vector2Int originCell, int rotation)
     {
         int w = size.x, h = size.y;
@@ -169,7 +217,6 @@ public class MultiGridManager : MonoBehaviour
                 yield return new Vector2Int(originCell.x + dx, originCell.y + dy);
     }
 
-    // OverlapBox için merkez ve boyutu hesapla
     public void GetFootprintBox(Vector2Int size, Vector2Int originCell, int rotation, out Vector3 center, out Vector2 worldSize)
     {
         int w = size.x, h = size.y;
@@ -186,9 +233,8 @@ public class MultiGridManager : MonoBehaviour
         var bounds = gridAreaTransform.GetComponent<Renderer>()?.bounds;
         if (bounds == null) return;
 
-        origin = bounds.Value.min;
-        width = Mathf.FloorToInt(bounds.Value.size.x / cellSize);
-        height = Mathf.FloorToInt(bounds.Value.size.y / cellSize);
+        // Scene görünümünde de aynı hesabı kullan
+        RecalculateGrid(bounds.Value);
 
         for (int x = 0; x < width; x++)
         {
@@ -196,8 +242,8 @@ public class MultiGridManager : MonoBehaviour
             {
                 Vector3 center = GetWorldPosition(x, y) + Vector3.one * cellSize * 0.5f;
                 Color c = gizmoColor;
-                if (blockedCells != null && blockedCells[x, y]) c = Color.red;
-                else if (occupiedCells != null && occupiedCells[x, y]) c = Color.yellow;
+                if (blockedCells != null && x < blockedCells.GetLength(0) && y < blockedCells.GetLength(1) && blockedCells[x, y]) c = Color.red;
+                else if (occupiedCells != null && x < occupiedCells.GetLength(0) && y < occupiedCells.GetLength(1) && occupiedCells[x, y]) c = Color.yellow;
 
                 Gizmos.color = c;
                 Gizmos.DrawWireCube(center, Vector3.one * cellSize);

@@ -2,14 +2,15 @@ using UnityEngine;
 
 public class CameraAligner : MonoBehaviour
 {
-    public Transform airportObject;
+    [Header("References")]
+    public Transform airportRoot;   // TÜM sahnenin parent’ı (pist+hangarlar+terminal...)
     public Camera targetCamera;
 
-    [Header("Zoom Ayarları")]
+    [Header("Zoom")]
     [Range(-1f, 1f)]
-    public float zoomOffset = 0f; // Pozitif → uzaklaş, Negatif → yaklaş
-
-    public float extraZoomOutFactor = 0.01f; // % boşluk payı (isteğe bağlı)
+    public float zoomOffset = 0f;           // + uzaklaş / - yaklaş
+    public float extraZoomOutFactor = 0.06f; // kenar payı
+    public float portraitExtraZoom = 0.14f; // portrede ekstra pay
 
     void Start()
     {
@@ -17,54 +18,51 @@ public class CameraAligner : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    // Oyun çalışırken ayar değişince anında gör
     void OnValidate()
     {
-        if (airportObject != null && targetCamera != null)
+        if (airportRoot != null && targetCamera != null)
             AlignCamera();
     }
 #endif
 
-    void AlignCamera()
+    public void AlignCamera()
     {
-        if (airportObject == null || targetCamera == null)
+        if (!airportRoot || !targetCamera)
         {
-            Debug.LogError("Eksik referans!");
+            Debug.LogError("CameraAligner: Referans eksik!");
             return;
         }
 
-        SpriteRenderer sr = airportObject.GetComponent<SpriteRenderer>();
-        if (sr == null)
+        // 1) Tüm Renderer’ları kapsayan TOPLAM bounds
+        var renderers = airportRoot.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0)
         {
-            Debug.LogError("SpriteRenderer eksik.");
+            Debug.LogError("CameraAligner: airportRoot altında Renderer yok.");
             return;
         }
 
-        Bounds bounds = sr.bounds;
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
 
-        // Kamera'yı merkeze yerleştir
+        // 2) Kamerayı merkeze koy
         Vector3 center = bounds.center;
         targetCamera.transform.position = new Vector3(center.x, center.y, targetCamera.transform.position.z);
 
-        // Kamera zoom: tam oturt
-        float screenAspect = (float)Screen.width / Screen.height;
-        float targetAspect = bounds.size.x / bounds.size.y;
-        float size;
+        // 3) SAFE AREA’YA göre ekran oranı (çentik/alt bar telafisi)
+        Rect sa = Screen.safeArea;
+        float screenAspect = sa.width / sa.height;
 
-        if (screenAspect >= targetAspect)
-        {
-            // Ekran daha geniş, yüksekliğe göre zoom
-            size = bounds.size.y / 2f;
-        }
-        else
-        {
-            // Ekran daha dar, genişliğe göre zoom
-            size = (bounds.size.x / screenAspect) / 2f;
-        }
+        // 4) PORTREDE GENİŞLİĞE GÖRE Sığdır (fit width)
+        // Ortho kamerada görünen yükseklik = orthographicSize * 2
+        // Genişlik bazlı fit: size = (targetWidth / screenAspect) / 2
+        float size = (bounds.size.x / screenAspect) * 0.5f;
 
-        // Ekstra boşluk + zoomOffset uygula
-        size *= (1f + extraZoomOutFactor + zoomOffset);
+        // 5) Paylar
+        bool isPortrait = Screen.height > Screen.width; // zaten portrait kullanıyoruz
+        float pad = 1f + extraZoomOutFactor + zoomOffset + (isPortrait ? portraitExtraZoom : 0f);
+        size *= Mathf.Max(0.01f, pad);
 
-        targetCamera.orthographicSize = size;
+        targetCamera.orthographicSize = Mathf.Max(0.01f, size);
     }
 }
