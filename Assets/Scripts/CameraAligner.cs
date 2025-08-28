@@ -1,68 +1,90 @@
 using UnityEngine;
 
+[ExecuteAlways]
 public class CameraAligner : MonoBehaviour
 {
     [Header("References")]
-    public Transform airportRoot;   // TÜM sahnenin parent’ı (pist+hangarlar+terminal...)
-    public Camera targetCamera;
+    public Camera targetCamera;          // Boşsa otomatik Camera.main alınır
+    [Tooltip("Level prefab instance veya tüm sahneyi kapsayan parent")]
+    public Transform airportRoot;        // Genelde GameArea/PlayfieldBoard
 
-    [Header("Zoom")]
-    [Range(-1f, 1f)]
-    public float zoomOffset = 0f;           // + uzaklaş / - yaklaş
-    public float extraZoomOutFactor = 0.06f; // kenar payı
-    public float portraitExtraZoom = 0.14f; // portrede ekstra pay
+    [Tooltip("Inspector referansını KİLİTLE. True ise runtime'da kimse değiştirmez.")]
+    public bool lockAirportRootFromInspector = true;
+
+    [Header("Fit & Padding")]
+    public bool fitWidthInPortrait = true;   // Portrede genişliğe göre sığdır
+    [Range(-1f, 1f)] public float zoomOffset = 0f;        // + uzaklaş / - yaklaş (ince ayar)
+    [Min(0f)] public float extraZoomOutFactor = 0.06f;    // kenar payı
+    [Min(0f)] public float portraitExtraZoom = 0.14f;     // portrede ekstra pay
+    [Min(0.01f)] public float minOrthoSize = 0.01f;
+
+    // İstersen GameFlowMinimal burayı çağırabilir;
+    // fakat inspector kilitliyse airportRoot'u DEĞİŞTİRMEZ.
+    public void AttachLevel(GameObject levelGO)
+    {
+        if (!lockAirportRootFromInspector || airportRoot == null)
+            airportRoot = levelGO ? levelGO.transform : null;
+
+        if (targetCamera == null) targetCamera = Camera.main;
+        AlignCamera();
+    }
+
+    public void AlignNow() => AlignCamera();
 
     void Start()
     {
+        if (targetCamera == null) targetCamera = Camera.main;
         AlignCamera();
     }
 
 #if UNITY_EDITOR
     void OnValidate()
     {
-        if (airportRoot != null && targetCamera != null)
+        if (!Application.isPlaying && (airportRoot != null) && (targetCamera != null || Camera.main != null))
             AlignCamera();
     }
 #endif
 
     public void AlignCamera()
     {
-        if (!airportRoot || !targetCamera)
-        {
-            Debug.LogError("CameraAligner: Referans eksik!");
-            return;
-        }
+        var cam = targetCamera != null ? targetCamera : Camera.main;
+        if (airportRoot == null || cam == null) return;
 
-        // 1) Tüm Renderer’ları kapsayan TOPLAM bounds
-        var renderers = airportRoot.GetComponentsInChildren<Renderer>();
-        if (renderers.Length == 0)
-        {
-            Debug.LogError("CameraAligner: airportRoot altında Renderer yok.");
-            return;
-        }
+        // 1) airportRoot altındaki TÜM Renderer'ların birleşik bounds'ı
+        var renderers = airportRoot.GetComponentsInChildren<Renderer>(true);
+        if (renderers == null || renderers.Length == 0) return;
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
+        Bounds b = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++) b.Encapsulate(renderers[i].bounds);
 
-        // 2) Kamerayı merkeze koy
-        Vector3 center = bounds.center;
-        targetCamera.transform.position = new Vector3(center.x, center.y, targetCamera.transform.position.z);
+        // 2) Kamera XY merkezini sahnenin merkezine taşı
+        var pos = cam.transform.position;
+        pos.x = b.center.x; pos.y = b.center.y;
+        cam.transform.position = pos;
 
-        // 3) SAFE AREA’YA göre ekran oranı (çentik/alt bar telafisi)
+        // 3) Ekran oranı (safe area ile)
         Rect sa = Screen.safeArea;
-        float screenAspect = sa.width / sa.height;
+        float aspect = sa.width / Mathf.Max(1f, sa.height);
 
-        // 4) PORTREDE GENİŞLİĞE GÖRE Sığdır (fit width)
-        // Ortho kamerada görünen yükseklik = orthographicSize * 2
-        // Genişlik bazlı fit: size = (targetWidth / screenAspect) / 2
-        float size = (bounds.size.x / screenAspect) * 0.5f;
+        // 4) Ortografik kamera: fit width (portre) + paylar
+        if (cam.orthographic)
+        {
+            float sizeByWidth  = (b.size.x / aspect) * 0.5f;
+            float sizeByHeight =  b.size.y * 0.5f;
 
-        // 5) Paylar
-        bool isPortrait = Screen.height > Screen.width; // zaten portrait kullanıyoruz
-        float pad = 1f + extraZoomOutFactor + zoomOffset + (isPortrait ? portraitExtraZoom : 0f);
-        size *= Mathf.Max(0.01f, pad);
+            float baseSize = (fitWidthInPortrait && Screen.height > Screen.width)
+                ? sizeByWidth
+                : Mathf.Max(sizeByWidth, sizeByHeight);
 
-        targetCamera.orthographicSize = Mathf.Max(0.01f, size);
+            float pad = 1f + extraZoomOutFactor + (Screen.height > Screen.width ? portraitExtraZoom : 0f) + zoomOffset;
+            cam.orthographicSize = Mathf.Max(minOrthoSize, baseSize * Mathf.Max(0.01f, pad));
+            return;
+        }
+
+        // 5) Perspektif için basit fit-width
+        float halfWidth = b.size.x * 0.5f;
+        float distance = halfWidth / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) / aspect;
+        distance *= 1f + extraZoomOutFactor + (Screen.height > Screen.width ? portraitExtraZoom : 0f) + zoomOffset;
+        cam.transform.position = new Vector3(b.center.x, b.center.y, b.center.z - Mathf.Abs(distance));
     }
 }

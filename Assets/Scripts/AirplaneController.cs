@@ -1,14 +1,14 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement; // restart için
 
 [RequireComponent(typeof(AirplaneData))]
 [RequireComponent(typeof(SpriteRenderer))]
-[RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(Collider2D))]
 public class AirplaneController : MonoBehaviour
 {
-    // Sprite’ın “burnu” defaultta nereye bakıyor?
     public enum ForwardAxis { Right, Up }
+
     [Header("Heading")]
     [SerializeField] private ForwardAxis forwardAxis = ForwardAxis.Right;
 
@@ -22,58 +22,55 @@ public class AirplaneController : MonoBehaviour
     [Tooltip("Çarpışma sırasında ne kadar küçülsün (0.4 = %40)")]
     public float shrinkAmount = 0.4f;
 
+    [Header("Restart")]
+    [Tooltip("Çarpışma animasyonundan sonra sahneyi yeniden yükleme gecikmesi")]
+    public float restartDelay = 0.1f;
+
     private AirplaneData data;
     private SpriteRenderer spriteRenderer;
     private Color originalColor;
-
-    private Rigidbody2D rb;
     private Collider2D col;
+
+    // === EVENTLER ===
+    public static System.Action OnPlaneTookOff;
+    public static System.Action OnPlaneCrashed;
 
     private float movedDistance = 0f;
     private bool isMoving = false;
     private bool isCrashing = false;
     private Coroutine moveCo;
+    private Vector3 defaultScale;
+
+    private void Awake()
+    {
+        col = GetComponent<Collider2D>();
+        col.isTrigger = true; // tetikleyici çarpışma
+    }
 
     private void Start()
     {
         data = GetComponent<AirplaneData>();
         spriteRenderer = GetComponent<SpriteRenderer>();
         originalColor = spriteRenderer.color;
+        defaultScale = transform.localScale;
 
-        // Fizik ayarları (trigger çarpışma için gerekli)
-        rb = GetComponent<Rigidbody2D>();
-        rb.bodyType = RigidbodyType2D.Kinematic;
-        rb.gravityScale = 0f;
-        rb.interpolation = RigidbodyInterpolation2D.Interpolate;
-
-        col = GetComponent<Collider2D>();
-        col.isTrigger = true;
-
-        // Sahne başında da yönü mevcut dönüşten türet
         SyncMoveDirectionFromRotation();
     }
 
     public void StartRolling()
     {
-        Debug.Log($"{gameObject.name} StartRolling çağrıldı");
+        if (isMoving || isCrashing) return;
 
-        if (!isMoving && !isCrashing)
-        {
-            isMoving = true;
-            movedDistance = 0f;
+        isMoving = true;
+        movedDistance = 0f;
 
-            // Kalkıştan hemen önce de güncelle (az önce döndürmüş olabilirsin)
-            SyncMoveDirectionFromRotation();
-
-            moveCo = StartCoroutine(RollAndTakeOff());
-        }
+        SyncMoveDirectionFromRotation();
+        moveCo = StartCoroutine(RollAndTakeOff());
     }
 
     private IEnumerator RollAndTakeOff()
     {
-        Debug.Log($"{gameObject.name} hareket etmeye başladı");
-
-        // 🔥 Yönü BURADAN al: burnun nereye bakıyorsa oraya.
+        // Burnun nereye bakıyorsa oraya ilerle
         Vector3 dirWorld = (forwardAxis == ForwardAxis.Right ? transform.right : transform.up).normalized;
 
         float z = transform.position.z;
@@ -86,20 +83,23 @@ public class AirplaneController : MonoBehaviour
             yield return null;
         }
 
-        if (!isCrashing)
-        {
-            yield return StartCoroutine(TakeOffAnimation());
-            Destroy(gameObject);
-        }
+        if (isCrashing) yield break;
+
+        // Başarılı kalkış → sallanıp fade
+        yield return StartCoroutine(TakeOffAnimation());
+
+        // Kalkış event'i
+        OnPlaneTookOff?.Invoke();
+
+        // Objeyi kaldır
+        Destroy(gameObject);
     }
 
     private IEnumerator TakeOffAnimation()
     {
         float duration = 1.5f;
         float elapsed = 0f;
-        float rotationAmount = 10f; // sağa sola eğilme açısı (derece)
-
-        // 🔥 Dalgalanmayı mevcut açı etrafında yap (burnu kaydırmaz)
+        float rotationAmount = 10f; // sağa sola eğilme (derece)
         float baseAngle = transform.eulerAngles.z;
 
         while (elapsed < duration)
@@ -116,31 +116,30 @@ public class AirplaneController : MonoBehaviour
         }
     }
 
-    // === ÇARPIŞMA: spin + fade ===
+    // === ÇARPIŞMA: pre-flight'ta kapalı, sonrasında spin+fade ve SAHNE RESTART ===
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (isCrashing) return;
+        if (MultiGridManager.PreFlightPhase) return; // kalkıştan önce çarpışma yok
+        if (!other || other.gameObject == this.gameObject) return;
 
-        // Tag yerine direkt component kontrolü daha güvenli
         var otherPlane = other.GetComponent<AirplaneController>();
-        if (otherPlane && otherPlane != this)
-        {
-            // Karşılıklı olarak iki uçağa da çarpışma animasyonu uygula
-            Vector2 awayFromMe = (transform.position - otherPlane.transform.position).normalized;
-            Vector2 awayFromOther = -awayFromMe;
+        if (!otherPlane) return; // sadece uçak-ucak
 
-            otherPlane.TriggerCrash(awayFromOther);
-            TriggerCrash(awayFromMe);
-        }
+        Vector2 awayFromMe = (transform.position - otherPlane.transform.position).normalized;
+        Vector2 awayFromOther = -awayFromMe;
+
+        otherPlane.TriggerCrash(awayFromOther, alsoRestart:false);
+        TriggerCrash(awayFromMe, alsoRestart:true); // bir taraf restart tetikler
     }
 
-    public void TriggerCrash(Vector2 awayDir)
+    public void TriggerCrash(Vector2 awayDir, bool alsoRestart)
     {
         if (isCrashing) return;
-        StartCoroutine(CrashSpinFade(awayDir));
+        StartCoroutine(CrashSpinFadeThenRestart(awayDir, alsoRestart));
     }
 
-    private IEnumerator CrashSpinFade(Vector2 awayDir)
+    private IEnumerator CrashSpinFadeThenRestart(Vector2 awayDir, bool alsoRestart)
     {
         isCrashing = true;
         isMoving = false;
@@ -178,16 +177,21 @@ public class AirplaneController : MonoBehaviour
             yield return null;
         }
 
-        Destroy(gameObject);
+        // Kaza event'i
+        OnPlaneCrashed?.Invoke();
+
+        if (alsoRestart)
+        {
+            yield return new WaitForSeconds(restartDelay);
+            Scene active = SceneManager.GetActiveScene();
+            SceneManager.LoadScene(active.buildIndex); // SAHNEYİ YENİDEN YÜKLE
+        }
     }
 
     // === YÖN SENKRONU ===
     public void SyncMoveDirectionFromRotation()
     {
-        // Burnu sağa çizildiyse transform.right, yukarıysa transform.up
         Vector3 fwd = (forwardAxis == ForwardAxis.Right ? transform.right : transform.up);
-
-        // (İsteğe bağlı) 4 ana yöne snap — grid oyunlarında daha güvenli
         Vector2 snapped = SnapToCardinal(fwd);
 
         data.direction = new Vector2Int(Mathf.RoundToInt(snapped.x), Mathf.RoundToInt(snapped.y));
@@ -196,7 +200,6 @@ public class AirplaneController : MonoBehaviour
 
     private static Vector2 SnapToCardinal(Vector3 v)
     {
-        // X veya Y bileşeni hangisi büyükse onu 1/-1 yap, diğeri 0
         if (Mathf.Abs(v.x) >= Mathf.Abs(v.y))
             return new Vector2(Mathf.Sign(v.x), 0f);
         else

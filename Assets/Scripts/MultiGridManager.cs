@@ -5,10 +5,16 @@ public class MultiGridManager : MonoBehaviour
 {
     public static MultiGridManager Instance;
 
+    // Kalkıştan önce çarpışma kilidi
+    public static bool PreFlightPhase { get; private set; } = true;
+
     public enum FitMode { UseRowsCols, UseCellSize }
 
     [Header("Grid Ayarları")]
     public Transform gridAreaTransform;
+
+    [Tooltip("Inspector referansını KİLİTLE. True ise runtime'da kimse üzerine yazamaz.")]
+    public bool lockGridAreaFromInspector = true;
 
     [Tooltip("Hücre kare boyu (UseCellSize modunda aktif)")]
     public float cellSize = 1f;
@@ -22,59 +28,84 @@ public class MultiGridManager : MonoBehaviour
     public Color gizmoColor = Color.gray;
 
     [Header("Konum (Inspector'dan ayarlanabilir)")]
-    [Tooltip("World-space kaydırma (birim cinsinden)")]
-    public Vector2 gridOffset = Vector2.zero;
-
-    [Tooltip("Hücre cinsinden kaydırma (tam hücre kaydırır)")]
-    public Vector2Int cellOffset = Vector2Int.zero;
+    public Vector2 gridOffset = Vector2.zero;       // world-space offset
+    public Vector2Int cellOffset = Vector2Int.zero; // cell-space offset
 
     [Header("Uçaklar")]
     public List<AirplaneController> allAirplanes = new List<AirplaneController>();
 
-    private Vector3 origin; // gridin sol-alt köşe dünya koordinatı (padding + offset sonrası)
-    private int width;      // hücre cinsinden genişlik
-    private int height;     // hücre cinsinden yükseklik
+    private Vector3 origin; // gridin sol-alt köşesi
+    private int width;      // hücre cinsinden
+    private int height;     // hücre cinsinden
 
-    // Engeller (hücre işaretleme)
     private bool[,] blockedCells;
-
-    // Uçak işgali
     private bool[,] occupiedCells;
     private readonly Dictionary<AirplaneData, List<Vector2Int>> planeCells = new();
 
-    void Awake()
+    private void Awake()
     {
         Instance = this;
 
-        if (!gridAreaTransform)
-        {
-            Debug.LogError("GridAreaTransform atanmamış!");
-            return;
-        }
+        // Sahne yüklenince pre-flight açık (çarpışma kapalı)
+        PreFlightPhase = true;
 
-        var bounds = gridAreaTransform.GetComponent<Renderer>()?.bounds;
-        if (bounds == null)
-        {
-            Debug.LogError("GridAreaTransform'da Renderer yok!");
-            return;
-        }
+        if (!ValidateGridArea(out var b)) return;
 
-        RecalculateGrid(bounds.Value);   // <<< ortak hesap
-
-        blockedCells  = new bool[width, height];
-        occupiedCells = new bool[width, height];
-
+        RebuildGridInternal(b);
         MarkObstacles();
     }
 
-    // --- Beyaz alana göre origin / cellSize / width / height hesabı + offsetler ---
+    // === DIŞARIDAN KULLANIM ===
+    /// Inspector’dan atadıysan ezilmez; boşsa set edilir.
+    public void BindGridAreaIfEmpty(Transform t)
+    {
+        if (t == null) return;
+        if (gridAreaTransform != null && lockGridAreaFromInspector) return;
+        gridAreaTransform = t;
+        RebuildGrid();
+    }
+
+    /// İstersen kilidi yok sayarak set edebilirsin.
+    public void SetGridAreaTransform(Transform t, bool overrideExisting = false)
+    {
+        if (!overrideExisting && lockGridAreaFromInspector && gridAreaTransform != null) return;
+        gridAreaTransform = t;
+        RebuildGrid();
+    }
+
+    /// Grid alanı/parametreleri değiştiğinde çağır.
+    public void RebuildGrid()
+    {
+        if (!ValidateGridArea(out var b)) return;
+        RebuildGridInternal(b);
+        MarkObstacles();
+    }
+
+    private bool ValidateGridArea(out Bounds bounds)
+    {
+        bounds = default;
+        if (!gridAreaTransform)
+        {
+            Debug.LogError("MultiGridManager: GridAreaTransform atanmamış!");
+            return false;
+        }
+        var r = gridAreaTransform.GetComponent<Renderer>();
+        if (!r)
+        {
+            Debug.LogError("MultiGridManager: GridAreaTransform'da Renderer yok!");
+            return false;
+        }
+        bounds = r.bounds;
+        return true;
+    }
+
+    // --- origin / cellSize / width / height + offsetler ---
     private void RecalculateGrid(Bounds b)
     {
         Vector3 baseOrigin;
 
         if (fitMode == FitMode.UseRowsCols)
         {
-            // Hücre kare kalmalı → X ve Y’den çıkan iki olası boydan küçük olanı al
             float csX = b.size.x / Mathf.Max(1, columns);
             float csY = b.size.y / Mathf.Max(1, rows);
             cellSize  = Mathf.Min(csX, csY);
@@ -82,33 +113,39 @@ public class MultiGridManager : MonoBehaviour
             width  = columns;
             height = rows;
 
-            // Kenar boşluklarını eşitle ve grid’i içte merkezle
             float padX = (b.size.x - width * cellSize)  * 0.5f;
             float padY = (b.size.y - height * cellSize) * 0.5f;
             baseOrigin = b.min + new Vector3(padX, padY, 0f);
         }
-        else // FitMode.UseCellSize
+        else
         {
             width  = Mathf.FloorToInt(b.size.x / Mathf.Max(0.0001f, cellSize));
             height = Mathf.FloorToInt(b.size.y / Mathf.Max(0.0001f, cellSize));
 
-            // Sığmayan kısım iki tarafa eşit dağıtılır → çizgiler kenara paralel olur
             float padX = (b.size.x - width * cellSize)  * 0.5f;
             float padY = (b.size.y - height * cellSize) * 0.5f;
             baseOrigin = b.min + new Vector3(padX, padY, 0f);
         }
 
-        // --- Inspector offsetleri ---
-        // 1) world-space offset
+        // offsets
         baseOrigin += new Vector3(gridOffset.x, gridOffset.y, 0f);
-        // 2) hücre cinsinden offset
         baseOrigin += new Vector3(cellOffset.x * cellSize, cellOffset.y * cellSize, 0f);
 
         origin = baseOrigin;
     }
 
+    private void RebuildGridInternal(Bounds b)
+    {
+        RecalculateGrid(b);
+        blockedCells  = new bool[width, height];
+        occupiedCells = new bool[width, height];
+        planeCells.Clear();
+    }
+
     private void MarkObstacles()
     {
+        if (width <= 0 || height <= 0) return;
+
         Collider2D[] obstacles = Physics2D.OverlapBoxAll(
             origin + new Vector3(width * cellSize / 2f, height * cellSize / 2f),
             new Vector2(width * cellSize, height * cellSize),
@@ -124,8 +161,10 @@ public class MultiGridManager : MonoBehaviour
         }
     }
 
+    // --------- KALKIŞ DÜĞMESİ ---------
     public void StartAllAirplanes()
     {
+        PreFlightPhase = false;
         foreach (var plane in allAirplanes)
             if (plane != null)
                 plane.StartRolling();
@@ -161,7 +200,6 @@ public class MultiGridManager : MonoBehaviour
         return occupiedCells[cell.x, cell.y];
     }
 
-    // ----- Yerleştirme / Döndürme API'ları -----
     public bool OverlapsObstacle(AirplaneData data, Vector2Int gridPos, int rotation)
     {
         GetFootprintBox(data.gridSize, gridPos, rotation, out Vector3 center, out Vector2 size);
@@ -174,6 +212,7 @@ public class MultiGridManager : MonoBehaviour
         {
             if (!IsWithinBounds(c)) return false;
             if (IsCellOccupied(c)) return false;
+            if (IsCellBlocked(c)) return false;
         }
         if (OverlapsObstacle(data, gridPos, rotation)) return false;
         return true;
@@ -188,6 +227,12 @@ public class MultiGridManager : MonoBehaviour
 
     public void Occupy(AirplaneData data, Vector2Int gridPos, int rotation)
     {
+        // güvenli işgal
+        foreach (var c in GetFootprintCells(data.gridSize, gridPos, rotation))
+        {
+            if (!IsWithinBounds(c) || IsCellBlocked(c)) return;
+        }
+
         Release(data);
 
         var list = new List<Vector2Int>();
@@ -233,7 +278,7 @@ public class MultiGridManager : MonoBehaviour
         var bounds = gridAreaTransform.GetComponent<Renderer>()?.bounds;
         if (bounds == null) return;
 
-        // Scene görünümünde de aynı hesabı kullan
+        // runtime'da gizmo renkleri işgal/blok durumu ile gösterilsin
         RecalculateGrid(bounds.Value);
 
         for (int x = 0; x < width; x++)
@@ -242,8 +287,13 @@ public class MultiGridManager : MonoBehaviour
             {
                 Vector3 center = GetWorldPosition(x, y) + Vector3.one * cellSize * 0.5f;
                 Color c = gizmoColor;
-                if (blockedCells != null && x < blockedCells.GetLength(0) && y < blockedCells.GetLength(1) && blockedCells[x, y]) c = Color.red;
-                else if (occupiedCells != null && x < occupiedCells.GetLength(0) && y < occupiedCells.GetLength(1) && occupiedCells[x, y]) c = Color.yellow;
+
+                if (blockedCells != null &&
+                    x < blockedCells.GetLength(0) && y < blockedCells.GetLength(1) &&
+                    blockedCells[x, y]) c = Color.red;
+                else if (occupiedCells != null &&
+                         x < occupiedCells.GetLength(0) && y < occupiedCells.GetLength(1) &&
+                         occupiedCells[x, y]) c = Color.yellow;
 
                 Gizmos.color = c;
                 Gizmos.DrawWireCube(center, Vector3.one * cellSize);
